@@ -26,9 +26,11 @@ function HandleIO(server){
             if (data.type==="camera"){
                 if (!camList.has(data.name)){
                     Logger.info(`${data.type} connected`)
-                    camList.set(socket.id, {id:uuidv4(), name:data.name})
+                    camList.set(socket.id, {id:data.id, name:data.name})
                     socket.join("cam-room")
                 }
+
+                // handle the notice action from camera to all clients
                 if(clientList.size===0){
                     Logger.info("No client connected...")
                 }
@@ -48,9 +50,10 @@ function HandleIO(server){
             else{
                 Logger.info("Client connected")
                 if (!clientList.has(socket.id)){
-                    clientList.set(socket.id,`client_${uuidv4()}`)
+                    clientList.set(socket.id,`client_${data.id}`)
                     socket.join("client-room")
                 }
+                // handle the notice action from client to all camera
                 if( camList.size===0 ){
                     Logger.info("No camera connected")
                 }
@@ -66,24 +69,42 @@ function HandleIO(server){
             }
         })
 
+
         socket.on("offer",(data)=>{
-            data=JSON.parse(data)
+            let foundKey
+            for (const [key, value] of clientList.entries()) {
+                if (value === data.target) {
+                  foundKey = key;
+                  break;
+                }
+            }
             message={
                 id: camList.get(socket.id)["id"],
-                payload: data
+                payload: data.payload
             }
-            console.log(message)
-            socket.to("client-room").emit("offer",message)
+            io.sockets.sockets.get(foundKey).emit("offer",message)
         })
         
         socket.on("answer",(data)=>{
+            let foundKey
+            for (const [key, value] of camList.entries()) {
+                if (value.id === data.target) {
+                  foundKey = key;
+                  break;
+                }
+            }
+            message={
+                id: clientList.get(socket.id),
+                payload: data.payload
+            }
+            io.sockets.sockets.get(foundKey).emit("answer", message)
 
         })
 
         socket.on("icecandidate",(data)=>{
 
         })
-        //TODO: Sự kiện disconnect của cả camera và client
+
         socket.on("disconnect", (reason) => {
             let address=socket.handshake.address
             Logger.info(`[${address}] disconnected: - ${reason}`)
@@ -99,6 +120,7 @@ function HandleIO(server){
             if (clientList.has(socket.id)){
                 Logger.info("Remove the client disconnected ...")
                 io.to("cam-room").emit("client-disconnect", clientList.get(socket.id))
+                clientList.delete(socket.id)
             }
 
         })
